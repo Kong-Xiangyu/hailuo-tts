@@ -551,7 +551,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
             logger.info(`messageId: ${messageId}`);
           } else {
             messageId = "";
-            !transStream.closed && transStream.end("data: [DONE]\n\n");
+            !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("555 DONE: isEnd === 0");
             endCallback && endCallback(chatID);
           }
         }
@@ -561,7 +561,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
       if (!transStream.closed) {
         const err_data = create_data(err.message.replace("Stream response error: ", ""), "stop");
         transStream.write(err_data);
-        transStream.end("data: [DONE]\n\n");
+        transStream.end("data: [DONE]\n\n") && logger.info("566 DONE: catch (err)");
       }
     }
   });
@@ -592,24 +592,24 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
       }
       const data = create_data('', 'stop');
       !transStream.closed && transStream.write(data);
-      !transStream.closed && transStream.end("data: [DONE]\n\n");
+      !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("598 DONE: getAudioUrl && messageId");
     } catch (err) {
       logger.error(err);
       if (!transStream.closed) {
         const err_data = create_data(err.message.replace("Stream response error: ", ""), "stop");
         transStream.write(err_data);
-        transStream.end("data: [DONE]\n\n");
+        transStream.end("data: [DONE]\n\n") && logger.info("605 DONE: catch (err)");
       }
     }
     endCallback && endCallback(convId);
   }
   stream.once(
     "error",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n")
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("612 DONE: stream.once(error)"))
   );
   stream.once(
     "close",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n")
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("617 DONE: stream.once(close)"))
   );
 
   

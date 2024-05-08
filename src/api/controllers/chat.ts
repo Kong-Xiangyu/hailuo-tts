@@ -1,6 +1,7 @@
 import { PassThrough } from "stream";
 import { ClientHttp2Session, ClientHttp2Stream } from "http2";
 import _ from "lodash";
+import AsyncLock from "async-lock";
 
 import { createParser } from "eventsource-parser";
 import core from "./core.ts";
@@ -15,6 +16,8 @@ const CHARACTER_ID = "1";
 const MAX_RETRY_COUNT = 3;
 // 重试延迟
 const RETRY_DELAY = 5000;
+// 语音生成异步锁
+const voiceUrlLock = new AsyncLock();
 
 /**
  * 移除会话
@@ -54,7 +57,10 @@ async function createCompletion(
   let session: ClientHttp2Session;
   return (async () => {
     logger.info(messages);
-
+    let message_id_required = false;
+    if (model.startsWith('tts')) {  // use 'tts_hailuo' to get 'message_id'
+      message_id_required = true;
+    }
     // 提取引用文件URL并上传获得引用的文件ID列表
     const refFileUrls = extractRefFileUrls(messages);
     const refs = refFileUrls.length
@@ -88,16 +94,18 @@ async function createCompletion(
 
     const streamStartTime = util.timestamp();
     // 接收流为输出文本
-    const answer = await receiveStream(model, stream);
+    const answer = await receiveStream(model, stream, message_id_required);
     session.close();
     logger.success(
       `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
     );
 
-    // 异步移除会话
-    removeConversation(answer.id, token).catch(
-      (err) => !refConvId && console.error(err)
-    );
+    if (message_id_required) {
+      // 异步移除会话
+      removeConversation(answer.id, token).catch(
+        (err) => !refConvId && console.error(err)
+      );
+    }
 
     return answer;
   })().catch((err) => {
@@ -493,6 +501,10 @@ function createTransStream(model: string, stream: any, endCallback?: Function) {
     try {
       if (event.type !== "event") return;
       const eventName = event.event;
+      let getAudioUrl = false;
+      if (model.startsWith('tts')) {  // use 'tts_hailuo' to get Audio Url
+        getAudioUrl = true;
+      }
       // 解析JSON
       const result = _.attempt(() => JSON.parse(event.data));
       if (_.isError(result))
@@ -503,8 +515,26 @@ function createTransStream(model: string, stream: any, endCallback?: Function) {
       const { messageResult } = _data || {};
       if (eventName == "message_result" && messageResult) {
         const { chatID, isEnd, content: text, extra } = messageResult;
+        const stop_msg = getAudioUrl? `audio url` : 'stop';
         if (isEnd !== 0 && !text) return;
         if (!convId) convId = chatID;
+        const trans_data = (transData: string, finishReason: any) => {
+          const data = `data: ${JSON.stringify({
+            id: convId,
+            model,
+            object: "chat.completion.chunk",
+            choices: [
+              {
+                index: 0,
+                delta: { content: transData },
+                finish_reason: finishReason,
+              },
+            ],
+            created,
+          })}\n\n`;
+          !transStream.closed && transStream.write(data);
+        };
+
         const exceptCharIndex = text.indexOf("�");
         const chunk = text.substring(
           exceptCharIndex != -1
@@ -512,22 +542,75 @@ function createTransStream(model: string, stream: any, endCallback?: Function) {
             : content.length,
           exceptCharIndex == -1 ? text.length : exceptCharIndex
         );
+        trans_data(chunk, isEnd === 0 ? stop_msg : null);
         content += chunk;
-        const data = `data: ${JSON.stringify({
-          id: convId,
-          model,
-          object: "chat.completion.chunk",
-          choices: [
-            {
-              index: 0,
-              delta: { content: chunk },
-              finish_reason: isEnd === 0 ? "stop" : null,
-            },
-          ],
-          created,
-        })}\n\n`;
-        !transStream.closed && transStream.write(data);
+        // const data = `data: ${JSON.stringify({
+        //   id: convId,
+        //   model,
+        //   object: "chat.completion.chunk",
+        //   choices: [
+        //     {
+        //       index: 0,
+        //       delta: { content: chunk },
+        //       finish_reason: isEnd === 0 ? stop_msg : null,
+        //     },
+        //   ],
+        //   created,
+        // })}\n\n`;
+        // !transStream.closed && transStream.write(data);
         if (isEnd === 0) {
+          if (getAudioUrl) {
+            await voiceUrlLock.acquire(token, async () => {
+              // 请求生成语音
+              let requestStatus = 0, audioUrlCount = 0;
+              let startTime = Date.now();
+              while (requestStatus < 2) {
+                if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
+                const result = await core.request(
+                  "GET",
+                  `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`,
+                  {},
+                  token,
+                  deviceInfo
+                );
+                ({ requestStatus, result: audioUrls } = core.checkResult(result));
+                let deltaUrls = audioUrls.slice(audioUrlCount);
+                for (let url of deltaUrls) {
+                  trans_data(url, null);
+                  // const data = `data: ${JSON.stringify({
+                  //   id: convId,
+                  //   model,
+                  //   object: "chat.completion.chunk",
+                  //   choices: [
+                  //     {
+                  //       index: 0,
+                  //       delta: { content: url },
+                  //       finish_reason: null,
+                  //     },
+                  //   ],
+                  //   created,
+                  // })}\n\n`;
+                  // !transStream.closed && transStream.write(data);
+                }
+                audioUrlCount = audioUrls.length;
+              }
+              trans_data('', 'stop');
+              // const data = `data: ${JSON.stringify({
+              //   id: convId,
+              //   model,
+              //   object: "chat.completion.chunk",
+              //   choices: [
+              //     {
+              //       index: 0,
+              //       delta: { content: '' },
+              //       finish_reason: 'stop',
+              //     },
+              //   ],
+              //   created,
+              // })}\n\n`;
+              // !transStream.closed && transStream.write(data);
+            });
+          }
           !transStream.closed && transStream.end("data: [DONE]\n\n");
           endCallback && endCallback(chatID);
         }

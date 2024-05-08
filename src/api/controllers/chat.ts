@@ -548,6 +548,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         if (isEnd === 0) {
           if (getAudioUrl) {
             messageId = msgID;
+            logger.info(`messageId: ${messageId}`);
           } else {
             messageId = "";
             !transStream.closed && transStream.end("data: [DONE]\n\n");
@@ -566,21 +567,13 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
   });
   // 将流数据喂给SSE转换器
   stream.on("data", (buffer) => parser.feed(buffer.toString()));
-  stream.once(
-    "error",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n")
-  );
-  stream.once(
-    "close",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n")
-  );
-
   if (getAudioUrl && messageId) {
     try {
       // 请求生成语音
       let requestStatus = 0, audioUrlCount = 0;
       while (requestStatus < 2) {
         let startTime = Date.now();
+        logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`);
         const result = await core.request(
           "GET",
           `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`,
@@ -610,6 +603,16 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
     }
     endCallback && endCallback(convId);
   }
+  stream.once(
+    "error",
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n")
+  );
+  stream.once(
+    "close",
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n")
+  );
+
+  
   return transStream;
 }
 

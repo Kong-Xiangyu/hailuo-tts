@@ -100,7 +100,7 @@ async function createCompletion(
       `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
     );
 
-    if (message_id_required) {
+    if (!message_id_required) {
       // 异步移除会话
       removeConversation(answer.id, token).catch(
         (err) => !refConvId && console.error(err)

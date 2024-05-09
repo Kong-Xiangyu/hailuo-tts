@@ -566,7 +566,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         content += chunk;
         !transStream.closed && transStream.write(create_data(chunk, null));
         if (isEnd === 0) {
-          if (getAudioUrl && messageId) {
+          if (false && getAudioUrl && messageId) {
             !transStream.closed && transStream.write(create_data('', stop_msg));
             // 请求生成语音
             let requestStatus = 0, audioUrlCount = 0;

@@ -612,7 +612,7 @@ async function createTransStream(model: string, stream: any, token: string, endC
     () => !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("DONE: stream.once(error)")
   );
   stream.once("close",
-    () => {
+    async () => {
       if (getAudioUrl && messageId) {
         // 请求生成语音
         const deviceInfo = await core.acquireDeviceInfo(token);
@@ -629,6 +629,11 @@ async function createTransStream(model: string, stream: any, token: string, endC
           );
           ({ requestStatus, result: audioUrls } = core.checkResult(result));
           let deltaUrls = audioUrls.slice(audioUrlCount);
+          // 如果没有新的语音，等待0.5秒
+          if (deltaUrls.length === 0) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            continue;
+          }
           for (let url of deltaUrls) {
             !transStream.closed && transStream.write(create_data(url, null));
           }

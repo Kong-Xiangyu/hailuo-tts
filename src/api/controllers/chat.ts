@@ -526,6 +526,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
       id: convId,
       model,
       object: "chat.completion.chunk",
+      system_fingerprint: messageId,
       choices: [
         {
           index: 0,
@@ -534,7 +535,6 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         },
       ],
       created,
-      message_id: messageId,
     })}\n\n`;
     return data;
   };

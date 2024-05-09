@@ -572,7 +572,7 @@ async function createTransStream(model: string, stream: any, token: string, endC
             !transStream.closed && transStream.write(create_data('', stop_msg));
             // 请求生成语音
             const deviceInfo = await core.acquireDeviceInfo(token);
-            let requestStatus = 0, audioUrlCount = 0;
+            let requestStatus = 0, audioUrlCount = 0, audioUrls = [];
             while (requestStatus < 2) {
               let startTime = Date.now();
               logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);

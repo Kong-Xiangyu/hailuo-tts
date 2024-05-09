@@ -203,10 +203,12 @@ async function createCompletionStream(
       logger.success(
         `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
       );
-      // 流传输结束后异步移除会话
-      removeConversation(convId, token).catch(
-        (err) => !refConvId && console.error(err)
-      );
+      if (!model.startsWith('tts')) {  // use 'tts_hailuo' to keep Conversation
+        // 流传输结束后异步移除会话
+        removeConversation(convId, token).catch(
+          (err) => !refConvId && console.error(err)
+        );
+      }
     });
   })().catch((err) => {
     session && session.close();

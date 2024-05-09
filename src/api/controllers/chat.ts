@@ -39,6 +39,25 @@ async function removeConversation(convId: string, token: string) {
 }
 
 /**
+ * 获取当前发言人
+ *
+ * @param token 认证token
+ */
+async function getVoiceID(token: string) {
+  const deviceInfo = await core.acquireDeviceInfo(token);
+  // 获取当前发言人
+  const result = await core.request(
+    "GET",
+    "/v1/api/chat/robot_custom_config?robotID=1",
+    {},
+    token,
+    deviceInfo
+  );
+  ({ config } = core.checkResult(result));
+  return config.robotVoiceID;
+}
+
+/**
  * 同步对话补全
  *
  * @param model 模型名称
@@ -552,10 +571,10 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
             let requestStatus = 0, audioUrlCount = 0;
             while (requestStatus < 2) {
               let startTime = Date.now();
-              logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`);
+              logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
               const result = await core.request(
                 "GET",
-                `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`,
+                `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`,  //  timbre 不生效，使用账号的历史音色
                 {},
                 token,
                 deviceInfo
@@ -599,6 +618,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
 }
 
 export default {
+  getVoiceID,
   createCompletion,
   createCompletionStream,
   createRepeatCompletion,

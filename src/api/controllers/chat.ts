@@ -567,33 +567,6 @@ async function createTransStream(model: string, stream: any, token: string, endC
         if (isEnd === 0) {
           const stop_msg = (getAudioUrl && messageId)? `audio url` : 'stop';
           !transStream.closed && transStream.write(create_data('', stop_msg));
-          // if (getAudioUrl && messageId) {
-            // // 请求生成语音
-            // const deviceInfo = await core.acquireDeviceInfo(token);
-            // let requestStatus = 0, audioUrlCount = 0, audioUrls = [];
-            // while (requestStatus < 2) {
-            //   let startTime = Date.now();
-            //   logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
-            //   const result = await core.request(
-            //     "GET",
-            //     `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`,  //  timbre 不生效，使用账号的历史音色
-            //     {},
-            //     token,
-            //     deviceInfo
-            //   );
-            //   ({ requestStatus, result: audioUrls } = core.checkResult(result));
-            //   let deltaUrls = audioUrls.slice(audioUrlCount);
-            //   for (let url of deltaUrls) {
-            //     !transStream.closed && transStream.write(create_data(url, null));
-            //   }
-            //   audioUrlCount = audioUrls.length;
-            //   if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
-            // }
-            // !transStream.closed && transStream.write(create_data('', 'stop'));
-          // }
-          // messageId = "";
-          // !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("574 DONE: isEnd === 0");
-          // endCallback && endCallback(chatID);
         }
       }
     } catch (err) {
@@ -619,7 +592,7 @@ async function createTransStream(model: string, stream: any, token: string, endC
         let requestStatus = 0, audioUrlCount = 0, audioUrls = [];
         while (requestStatus < 2) {
           let startTime = Date.now();
-          logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
+          // logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
           const result = await core.request(
             "GET",
             `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`,  //  timbre 不生效，使用账号的历史音色
@@ -629,9 +602,9 @@ async function createTransStream(model: string, stream: any, token: string, endC
           );
           ({ requestStatus, result: audioUrls } = core.checkResult(result));
           let deltaUrls = audioUrls.slice(audioUrlCount);
-          // 如果没有新的语音，等待0.5秒
+          // 如果没有新的语音，等待1秒
           if (deltaUrls.length === 0) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
             continue;
           }
           for (let url of deltaUrls) {

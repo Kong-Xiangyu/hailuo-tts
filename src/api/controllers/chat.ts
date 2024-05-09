@@ -534,6 +534,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         },
       ],
       created,
+      message_id: messageId,
     })}\n\n`;
     return data;
   };
@@ -563,10 +564,10 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
           exceptCharIndex == -1 ? text.length : exceptCharIndex
         );
         content += chunk;
-        const data = create_data(chunk, isEnd === 0 ? stop_msg : null);
-        !transStream.closed && transStream.write(data);
+        !transStream.closed && transStream.write(create_data(chunk, null));
         if (isEnd === 0) {
           if (getAudioUrl && messageId) {
+            !transStream.closed && transStream.write(create_data('', stop_msg));
             // 请求生成语音
             let requestStatus = 0, audioUrlCount = 0;
             while (requestStatus < 2) {

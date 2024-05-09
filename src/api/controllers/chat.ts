@@ -203,12 +203,10 @@ async function createCompletionStream(
       logger.success(
         `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
       );
-      if (!model.startsWith('tts')) {  // use 'tts_hailuo' to keep Conversation
-        // 流传输结束后异步移除会话
-        removeConversation(convId, token).catch(
-          (err) => !refConvId && console.error(err)
-        );
-      }
+      // 流传输结束后异步移除会话
+      removeConversation(convId, token).catch(
+        (err) => !refConvId && console.error(err)
+      );
     });
   })().catch((err) => {
     session && session.close();
@@ -554,7 +552,6 @@ async function createTransStream(model: string, stream: any, token: string, endC
       const { messageResult } = _data || {};
       if (eventName == "message_result" && messageResult) {
         const { chatID, msgID, isEnd, content: text, extra } = messageResult;
-        const stop_msg = getAudioUrl? `audio url` : 'stop';
         if (isEnd !== 0 && !text) return;
         if (!convId) convId = chatID;
         if (!messageId) messageId = msgID;
@@ -568,54 +565,83 @@ async function createTransStream(model: string, stream: any, token: string, endC
         content += chunk;
         !transStream.closed && transStream.write(create_data(chunk, null));
         if (isEnd === 0) {
-          if (getAudioUrl && messageId) {
-            !transStream.closed && transStream.write(create_data('', stop_msg));
-            // 请求生成语音
-            const deviceInfo = await core.acquireDeviceInfo(token);
-            let requestStatus = 0, audioUrlCount = 0, audioUrls = [];
-            while (requestStatus < 2) {
-              let startTime = Date.now();
-              logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
-              const result = await core.request(
-                "GET",
-                `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`,  //  timbre 不生效，使用账号的历史音色
-                {},
-                token,
-                deviceInfo
-              );
-              ({ requestStatus, result: audioUrls } = core.checkResult(result));
-              let deltaUrls = audioUrls.slice(audioUrlCount);
-              for (let url of deltaUrls) {
-                !transStream.closed && transStream.write(create_data(url, null));
-              }
-              audioUrlCount = audioUrls.length;
-              if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
-            }
-            !transStream.closed && transStream.write(create_data('', 'stop'));
-          }
-          messageId = "";
-          !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("574 DONE: isEnd === 0");
-          endCallback && endCallback(chatID);
+          const stop_msg = (getAudioUrl && messageId)? `audio url` : 'stop';
+          !transStream.closed && transStream.write(create_data('', stop_msg));
+          // if (getAudioUrl && messageId) {
+            // // 请求生成语音
+            // const deviceInfo = await core.acquireDeviceInfo(token);
+            // let requestStatus = 0, audioUrlCount = 0, audioUrls = [];
+            // while (requestStatus < 2) {
+            //   let startTime = Date.now();
+            //   logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
+            //   const result = await core.request(
+            //     "GET",
+            //     `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`,  //  timbre 不生效，使用账号的历史音色
+            //     {},
+            //     token,
+            //     deviceInfo
+            //   );
+            //   ({ requestStatus, result: audioUrls } = core.checkResult(result));
+            //   let deltaUrls = audioUrls.slice(audioUrlCount);
+            //   for (let url of deltaUrls) {
+            //     !transStream.closed && transStream.write(create_data(url, null));
+            //   }
+            //   audioUrlCount = audioUrls.length;
+            //   if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
+            // }
+            // !transStream.closed && transStream.write(create_data('', 'stop'));
+          // }
+          // messageId = "";
+          // !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("574 DONE: isEnd === 0");
+          // endCallback && endCallback(chatID);
         }
       }
     } catch (err) {
       logger.error(err);
+      const stop_msg = err.message.replace("Stream response error: ", "");
       if (!transStream.closed) {
-        const err_data = create_data(err.message.replace("Stream response error: ", ""), "stop");
-        transStream.write(err_data);
-        transStream.end("data: [DONE]\n\n") && logger.info("584 DONE: catch (err)");
+        transStream.write(create_data('', stop_msg));
+        transStream.end("data: [DONE]\n\n") && logger.info("DONE: catch (err)");
+        endCallback && endCallback(convId);
       }
     }
   });
   // 将流数据喂给SSE转换器
   stream.on("data", (buffer) => parser.feed(buffer.toString()));
-  stream.once(
-    "error",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("592 DONE: stream.once(error)"))
+  stream.once("error",
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("DONE: stream.once(error)")
   );
-  stream.once(
-    "close",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("596 DONE: stream.once(close)"))
+  stream.once("close",
+    () => {
+      if (getAudioUrl && messageId) {
+        // 请求生成语音
+        const deviceInfo = await core.acquireDeviceInfo(token);
+        let requestStatus = 0, audioUrlCount = 0, audioUrls = [];
+        while (requestStatus < 2) {
+          let startTime = Date.now();
+          logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`);
+          const result = await core.request(
+            "GET",
+            `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=male-botong`,  //  timbre 不生效，使用账号的历史音色
+            {},
+            token,
+            deviceInfo
+          );
+          ({ requestStatus, result: audioUrls } = core.checkResult(result));
+          let deltaUrls = audioUrls.slice(audioUrlCount);
+          for (let url of deltaUrls) {
+            !transStream.closed && transStream.write(create_data(url, null));
+          }
+          audioUrlCount = audioUrls.length;
+          if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
+        }
+        !transStream.closed && transStream.write(create_data('', 'stop'));
+      }
+      if (!transStream.closed) {
+        transStream.end("data: [DONE]\n\n") && logger.info("DONE: stream.once(close)");
+        endCallback && endCallback(convId);
+      }
+    }
   ); 
   return transStream;
 }

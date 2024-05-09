@@ -199,7 +199,7 @@ async function createCompletionStream(
 
     const streamStartTime = util.timestamp();
     // 创建转换流将消息格式转换为gpt兼容格式
-    return await createTransStream(model, stream, (convId: string) => {
+    return await createTransStream(model, stream, token, (convId: string) => {
       logger.success(
         `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
       );
@@ -495,7 +495,7 @@ async function receiveStream(
  * @param stream 消息流
  * @param endCallback 传输结束回调
  */
-async function createTransStream(model: string, stream: any, endCallback?: Function) {
+async function createTransStream(model: string, stream: any, token: string, endCallback?: Function) {
   // 消息创建时间
   const created = util.unixTimestamp();
   // 创建转换流
@@ -568,9 +568,10 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         content += chunk;
         !transStream.closed && transStream.write(create_data(chunk, null));
         if (isEnd === 0) {
-          if (false && getAudioUrl && messageId) {
+          if (getAudioUrl && messageId) {
             !transStream.closed && transStream.write(create_data('', stop_msg));
             // 请求生成语音
+            const deviceInfo = await core.acquireDeviceInfo(token);
             let requestStatus = 0, audioUrlCount = 0;
             while (requestStatus < 2) {
               let startTime = Date.now();
@@ -595,7 +596,6 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
           messageId = "";
           !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("574 DONE: isEnd === 0");
           endCallback && endCallback(chatID);
-
         }
       }
     } catch (err) {

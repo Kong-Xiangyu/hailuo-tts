@@ -518,7 +518,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
     })}\n\n`;
     return data;
   };
-  const parser = createParser((event) => {
+  const parser = createParser(async (event) => {
     try {
       if (event.type !== "event") return;
       const eventName = event.event;
@@ -535,6 +535,7 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         const stop_msg = getAudioUrl? `audio url` : 'stop';
         if (isEnd !== 0 && !text) return;
         if (!convId) convId = chatID;
+        if (!messageId) messageId = msgID;
         const exceptCharIndex = text.indexOf("�");
         const chunk = text.substring(
           exceptCharIndex != -1
@@ -546,14 +547,33 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
         const data = create_data(chunk, isEnd === 0 ? stop_msg : null);
         !transStream.closed && transStream.write(data);
         if (isEnd === 0) {
-          if (getAudioUrl) {
-            messageId = msgID;
-            logger.info(`messageId: ${messageId}`);
-          } else {
-            messageId = "";
-            !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("555 DONE: isEnd === 0");
-            endCallback && endCallback(chatID);
+          if (getAudioUrl && messageId) {
+            // 请求生成语音
+            let requestStatus = 0, audioUrlCount = 0;
+            while (requestStatus < 2) {
+              let startTime = Date.now();
+              logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`);
+              const result = await core.request(
+                "GET",
+                `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`,
+                {},
+                token,
+                deviceInfo
+              );
+              ({ requestStatus, result: audioUrls } = core.checkResult(result));
+              let deltaUrls = audioUrls.slice(audioUrlCount);
+              for (let url of deltaUrls) {
+                !transStream.closed && transStream.write(create_data(url, null));
+              }
+              audioUrlCount = audioUrls.length;
+              if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
+            }
+            !transStream.closed && transStream.write(create_data('', 'stop'));
           }
+          messageId = "";
+          !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("574 DONE: isEnd === 0");
+          endCallback && endCallback(chatID);
+
         }
       }
     } catch (err) {
@@ -561,58 +581,20 @@ async function createTransStream(model: string, stream: any, endCallback?: Funct
       if (!transStream.closed) {
         const err_data = create_data(err.message.replace("Stream response error: ", ""), "stop");
         transStream.write(err_data);
-        transStream.end("data: [DONE]\n\n") && logger.info("566 DONE: catch (err)");
+        transStream.end("data: [DONE]\n\n") && logger.info("584 DONE: catch (err)");
       }
     }
   });
   // 将流数据喂给SSE转换器
   stream.on("data", (buffer) => parser.feed(buffer.toString()));
-  if (getAudioUrl && messageId) {
-    try {
-      // 请求生成语音
-      let requestStatus = 0, audioUrlCount = 0;
-      while (requestStatus < 2) {
-        let startTime = Date.now();
-        logger.info(`GET: /v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`);
-        const result = await core.request(
-          "GET",
-          `/v1/api/chat/msg_tts?msgID=${messageId}&timbre=${voice}`,
-          {},
-          token,
-          deviceInfo
-        );
-        ({ requestStatus, result: audioUrls } = core.checkResult(result));
-        let deltaUrls = audioUrls.slice(audioUrlCount);
-        for (let url of deltaUrls) {
-          const data = create_data(url, null);
-          !transStream.closed && transStream.write(data);
-        }
-        audioUrlCount = audioUrls.length;
-        if (Date.now() - startTime > 10000) throw new Error("语音生成超时");
-      }
-      const data = create_data('', 'stop');
-      !transStream.closed && transStream.write(data);
-      !transStream.closed && transStream.end("data: [DONE]\n\n") && logger.info("598 DONE: getAudioUrl && messageId");
-    } catch (err) {
-      logger.error(err);
-      if (!transStream.closed) {
-        const err_data = create_data(err.message.replace("Stream response error: ", ""), "stop");
-        transStream.write(err_data);
-        transStream.end("data: [DONE]\n\n") && logger.info("605 DONE: catch (err)");
-      }
-    }
-    endCallback && endCallback(convId);
-  }
   stream.once(
     "error",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("612 DONE: stream.once(error)"))
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("592 DONE: stream.once(error)"))
   );
   stream.once(
     "close",
-    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("617 DONE: stream.once(close)"))
-  );
-
-  
+    () => !transStream.closed && transStream.end("data: [DONE]\n\n" && logger.info("596 DONE: stream.once(close)"))
+  ); 
   return transStream;
 }
 
